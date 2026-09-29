@@ -138,6 +138,28 @@ def test_super_admin_creates_edits_searches_and_deletes_accounts(user_factory, c
     assert login("nueva@example.com", new_password).status_code == status.HTTP_401_UNAUTHORIZED
 
 
+@pytest.mark.parametrize("term", ["jose perez", "josé pérez", "JOSÉ", "perez"])
+def test_users_are_found_by_name_regardless_of_accents_and_case(user_factory, client_for, term):
+    boss = client_for(user_factory(role=User.Role.SUPER_ADMIN))
+    User.objects.create_user("jose@example.com", PASSWORD, full_name="José Pérez")
+    User.objects.create_user("ana@example.com", PASSWORD, full_name="Ana Gómez")
+
+    found = boss.get(USERS_URL, {"search": term}).json()["data"]
+
+    assert [user["email"] for user in found] == ["jose@example.com"]
+
+
+def test_an_unaccented_name_is_found_by_an_accented_term_and_email_search_still_works(user_factory, client_for):
+    boss = client_for(user_factory(role=User.Role.SUPER_ADMIN))
+    User.objects.create_user("maria@example.com", PASSWORD, full_name="Maria Lopez")
+
+    by_name = boss.get(USERS_URL, {"search": "maría lópez"}).json()["data"]
+    by_email = boss.get(USERS_URL, {"search": "MARIA@example"}).json()["data"]
+
+    assert [user["email"] for user in by_name] == ["maria@example.com"]
+    assert [user["email"] for user in by_email] == ["maria@example.com"]
+
+
 def test_deactivating_an_account_ends_its_sessions_and_nobody_locks_themselves_out(
     api_client, user_factory, client_for, login
 ):

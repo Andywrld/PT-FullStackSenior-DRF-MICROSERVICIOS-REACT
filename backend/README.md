@@ -161,6 +161,11 @@ El access token se envía en el header `Authorization: Bearer <access_token>`.
   el mismo producto.
 - El listado admite paginación, búsqueda (`?search=`), orden (`?ordering=price`) y
   filtros (`?is_active=`, `?min_price=`, `?max_price=`, `?category=<id>`).
+- **La búsqueda ignora acentos y mayúsculas** (por nombre y SKU; en categorías, por
+  nombre): `cafe` encuentra "Café Molido" y `café` encuentra "Cafe". Usa la extensión
+  `unaccent` de Postgres, que crea una migración (en Postgres 13+ es una extensión de
+  confianza: basta con el permiso `CREATE` sobre la base, sin ser superusuario). La
+  búsqueda de usuarios en auth, por nombre completo, funciona igual.
 - `?ids=a,b,c` resuelve hasta 100 productos en **una sola llamada**: lo usa el
   carrito para no hacer una request por producto.
 

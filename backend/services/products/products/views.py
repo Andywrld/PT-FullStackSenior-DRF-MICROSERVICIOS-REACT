@@ -33,7 +33,8 @@ class ProductViewSet(CatalogCacheMixin, viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsAdminOrReadOnly]
     filterset_class = ProductFilter
-    search_fields = ["name", "sku"]
+    # `__unaccent` makes the match accent-insensitive on both sides ("cafe" finds "Café", and vice versa).
+    search_fields = ["name__unaccent", "sku"]
     ordering_fields = ["price", "name", "created_at", "stock"]
     ordering = ["-created_at"]
     lookup_field = "id"
@@ -79,7 +80,7 @@ class CategoryViewSet(CatalogCacheMixin, viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAdminOrReadOnly]
     filterset_fields = ["is_active"]
-    search_fields = ["name"]
+    search_fields = ["name__unaccent"]
     ordering_fields = ["name", "created_at"]
     ordering = ["name"]
     lookup_field = "id"

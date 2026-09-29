@@ -104,7 +104,7 @@ class UserViewSet(
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     lookup_field = "id"
     filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ["email", "full_name"]
+    search_fields = ["email", "full_name__unaccent"]  # accent-insensitive name, see the products service
     ordering_fields = ["date_joined", "email", "full_name"]
     ordering = ["-date_joined"]
 

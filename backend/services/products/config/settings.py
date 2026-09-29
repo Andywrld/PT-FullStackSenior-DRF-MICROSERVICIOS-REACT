@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",  # the unaccent lookup behind accent-insensitive search
     "rest_framework",
     "django_filters",
     "drf_spectacular",
