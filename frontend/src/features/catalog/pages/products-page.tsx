@@ -62,7 +62,11 @@ export function ProductsPage() {
         <CatalogSearchField value={filters.q} onChange={setSearch} />
       </header>
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_16rem]">
+      <div className="grid gap-10 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <aside aria-label="Filtros" className="hidden lg:block">
+          <div className="sticky top-24">{panel}</div>
+        </aside>
+
         <div className="flex flex-col gap-10">
           {products.isPending ? (
             <ProductGridSkeleton />
@@ -89,10 +93,6 @@ export function ProductsPage() {
           )}
           {pagination && <PaginationControls pagination={pagination} onPageChange={setPage} />}
         </div>
-
-        <aside aria-label="Filtros" className="hidden lg:block">
-          <div className="sticky top-24">{panel}</div>
-        </aside>
       </div>
 
       <Sheet modal="trap-focus" open={filtersOpen} onOpenChange={setFiltersOpen}>
