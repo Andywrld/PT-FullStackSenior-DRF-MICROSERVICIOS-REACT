@@ -85,3 +85,21 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return f"{self.product_id} #{self.position}"
+
+
+class StockDeduction(models.Model):
+    """Stock held for one purchase, keyed by the caller's `reference` (the order id).
+
+    The unique reference is what makes deducting idempotent: a retried call, or a
+    race between two identical calls, finds this row instead of deducting again.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reference = models.UUIDField(unique=True)
+    # Aggregated lines as [{"product_id": "<uuid>", "quantity": <int>}]: what a release gives back.
+    items = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.reference} ({'released' if self.released_at else 'held'})"

@@ -112,6 +112,15 @@ CART_SERVICE_TIMEOUT = (
 CART_SERVICE_RETRIES = env_int("CART_SERVICE_RETRIES", 2)
 CART_GATEWAY_CLASS = "orders.cart_http.HttpCartGateway"
 
+PRODUCTS_SERVICE_URL = env_str("PRODUCTS_SERVICE_URL", "http://products:8000")
+PRODUCTS_SERVICE_TIMEOUT = (
+    env_float("PRODUCTS_SERVICE_CONNECT_TIMEOUT", 1.0),
+    env_float("PRODUCTS_SERVICE_READ_TIMEOUT", 3.0),
+)
+# Deductions are idempotent by reference, so a retried call cannot deduct twice.
+PRODUCTS_SERVICE_RETRIES = env_int("PRODUCTS_SERVICE_RETRIES", 2)
+STOCK_GATEWAY_CLASS = "orders.stock_http.HttpStockGateway"
+
 
 USE_TZ = True
 TIME_ZONE = "UTC"

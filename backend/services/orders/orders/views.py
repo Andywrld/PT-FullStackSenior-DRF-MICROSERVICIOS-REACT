@@ -12,6 +12,7 @@ from . import services
 from .cart_gateway import get_cart_gateway
 from .models import Order
 from .serializers import OrderSerializer
+from .stock_gateway import get_stock_gateway
 
 MAX_IDEMPOTENCY_KEY_LENGTH = 64
 
@@ -77,7 +78,9 @@ class OrderViewSet(
             raise ValidationError(
                 {"idempotency_key": [f"Must be at most {MAX_IDEMPOTENCY_KEY_LENGTH} characters."]}
             )
-        result = services.place_order(request.user, get_cart_gateway(), idempotency_key=idempotency_key)
+        result = services.place_order(
+            request.user, get_cart_gateway(), get_stock_gateway(), idempotency_key=idempotency_key
+        )
         serializer = self.get_serializer(result.order)
         response = Response(
             serializer.data, status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK

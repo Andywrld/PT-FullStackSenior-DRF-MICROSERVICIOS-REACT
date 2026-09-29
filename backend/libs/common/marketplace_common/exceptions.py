@@ -22,6 +22,8 @@ def exception_handler(exc, context):
         set_rollback()
         message = str(exc)
         details = {exc.field: [message]} if exc.field else None
+        if exc.details:
+            details = {**(details or {}), **exc.details}
         return Response(_error(exc.code, message, details), status=exc.status_code, headers=exc.headers)
 
     if isinstance(exc, Http404):

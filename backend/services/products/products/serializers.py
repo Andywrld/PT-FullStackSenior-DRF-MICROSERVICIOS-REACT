@@ -7,7 +7,7 @@ from django.db.models import Max
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from .models import Category, Product, ProductImage
+from .models import Category, Product, ProductImage, StockDeduction
 
 # Extension comes from the Pillow-detected format: the client's filename and content-type are never trusted.
 ALLOWED_IMAGE_FORMATS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
@@ -172,3 +172,21 @@ class ProductSerializer(serializers.ModelSerializer):
         if not validated_data.get("sku"):
             validated_data.pop("sku", None)
         return super().update(instance, validated_data)
+
+
+class StockLineSerializer(serializers.Serializer):
+    product_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class StockDeductionRequestSerializer(serializers.Serializer):
+    reference = serializers.UUIDField()
+    items = StockLineSerializer(many=True, allow_empty=False)
+
+
+class StockDeductionSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = StockDeduction
+        fields = ["reference", "items", "created_at", "released_at"]
+        read_only_fields = fields

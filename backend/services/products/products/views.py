@@ -11,10 +11,17 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import services
 from .catalog_cache import CatalogCacheMixin
 from .filters import ProductFilter
 from .models import Category, Product
-from .serializers import CategorySerializer, ProductImageSerializer, ProductSerializer
+from .serializers import (
+    CategorySerializer,
+    ProductImageSerializer,
+    ProductSerializer,
+    StockDeductionRequestSerializer,
+    StockDeductionSerializer,
+)
 
 UUID_REGEX = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
@@ -88,6 +95,36 @@ class CategoryViewSet(CatalogCacheMixin, viewsets.ModelViewSet):
         except ProtectedError as exc:
             # on_delete=PROTECT: refusing is safer than orphaning or deleting products.
             raise CategoryInUseError() from exc
+        return Response(None, status=status.HTTP_200_OK)
+
+
+@extend_schema(exclude=True)  # internal endpoint, not part of the public API
+class InternalStockDeductionsView(APIView):
+    # Called by orders, no token: nginx never routes /internal/, so trust is network isolation
+    # (production would add mTLS or per-service credentials).
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        payload = StockDeductionRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        result = services.deduct_stock(**payload.validated_data)
+        # 200 for a replay of an earlier call: the caller can tell nothing new happened.
+        return Response(
+            StockDeductionSerializer(result.deduction).data,
+            status=status.HTTP_201_CREATED if result.applied else status.HTTP_200_OK,
+        )
+
+
+@extend_schema(exclude=True)  # internal endpoint, not part of the public API
+class InternalStockDeductionView(APIView):
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def delete(self, request, reference):
+        services.release_stock(reference)  # idempotent: unknown or released references are fine
         return Response(None, status=status.HTTP_200_OK)
 
 

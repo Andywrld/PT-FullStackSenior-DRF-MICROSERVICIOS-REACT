@@ -2,7 +2,10 @@
 
 
 class DomainError(Exception):
-    """Subclasses set `status_code`, a stable `code` and optionally `field` (details become {field: [message]})."""
+    """Subclasses set `status_code`, a stable `code` and optionally `field` (details become {field: [message]}).
+
+    Pass a `details` dict for structured extras (e.g. the offending ids); it is merged over the `field` one.
+    """
 
     status_code = 400
     code = "domain_error"
@@ -10,8 +13,9 @@ class DomainError(Exception):
     headers = None
     default_message = "The request could not be processed."
 
-    def __init__(self, message=None):
+    def __init__(self, message=None, details=None):
         super().__init__(message or self.default_message)
+        self.details = details
 
 
 class ServiceUnavailableError(DomainError):

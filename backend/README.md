@@ -63,7 +63,8 @@ host ─► :8080 gateway (nginx) ─┬─► auth ──────► auth-d
                                ├─► cart ──────► cart-db        [red cart-data]
                                │      └─HTTP──► products
                                ├─► orders ────► orders-db      [red orders-data]
-                               │      └─HTTP──► cart (endpoints internos)
+                               │      ├─HTTP──► cart (endpoints internos)
+                               │      └─HTTP──► products (endpoints internos de stock)
                                └─► /media ────► minio
   products, cart y orders ─JWKS─► auth (clave pública para verificar tokens)
 ```
@@ -213,9 +214,10 @@ Redis. Cada respuesta indica de dónde salió con el header `X-Cache: HIT | MISS
   puede alcanzarlo. No tiene persistencia y usa un máximo de 64 MB con política LRU.
 - **Limitación**: `queryset.update()` y el SQL directo no disparan señales de
   Django; quien los use debe llamar a `catalog_cache.bump_version()`.
-- **Compras**: una compra no invalida el caché porque hoy no modifica productos (el
-  stock se valida pero no se descuenta). Si en el futuro se descuenta stock, lo hará
-  el servicio de productos y la invalidación ocurrirá sola.
+- **Compras**: una compra sí invalida el caché, porque descuenta stock. El descuento
+  lo hace el servicio de productos con `UPDATE` directos, que no disparan señales de
+  Django, así que llama a `catalog_cache.bump_version()` después del commit (una vez
+  por descuento, no por producto). Lo mismo al devolver el stock.
 
 ### Imágenes (almacenamiento de objetos)
 
@@ -240,6 +242,31 @@ no código.
 - **Reglas**: JPEG, PNG o WEBP, detectado por el contenido del archivo y no por la
   extensión; máximo 5 MB; hasta 8 imágenes por producto; solo admin. El archivo se
   borra del almacenamiento recién cuando se confirma el borrado en la base.
+
+### Endpoints internos de stock (para órdenes)
+
+Igual que los internos del carrito (más abajo), existen solo para otros servicios: no
+piden token, nginx no los expone y la confianza se basa en el aislamiento de red.
+
+```text
+POST   /internal/v1/stock/deductions/              {reference, items: [{product_id, quantity}]}
+DELETE /internal/v1/stock/deductions/{reference}/  devuelve el stock de ese descuento
+```
+
+- **Idempotentes por `reference`** (el id de la orden), que se guarda en
+  `StockDeduction` con restricción única. `POST` responde `201` cuando descuenta y
+  `200` cuando esa referencia ya estaba descontada (un reintento no descuenta dos
+  veces). `DELETE` devuelve el stock una sola vez; si la referencia no existe o ya
+  se devolvió, no hace nada, y responde `200` con `data: null` como todos los `DELETE`.
+- **Todo o nada**: cada producto debe existir, estar activo y tener stock suficiente.
+  Si no, responde `409` sin descontar nada: `insufficient_stock` o `unavailable_items`,
+  con todos los productos con problema en `error.details.products`. Repetir el `POST`
+  de una referencia ya devuelta responde `409` (`stock_deduction_released`) en lugar de
+  aparentar que el stock sigue retenido.
+- **Concurrencia**: la fila de la referencia se inserta primero (el índice único hace
+  esperar a una llamada idéntica y simultánea, que después recibe el `200`) y luego se
+  bloquean los productos con `SELECT ... FOR UPDATE` ordenados por id, así que dos
+  órdenes por la última unidad no pasan las dos y no hay deadlocks.
 
 ## Servicio de carrito
 
@@ -296,16 +323,27 @@ porque "no pasa por el gateway" no es lo mismo que "quien llama está autenticad
   en `meta.cart_cleared`. Si en ese momento el carrito no responde, la orden **no**
   se deshace: perder una orden válida es peor que dejar un carrito sin vaciar. En
   producción el vaciado se reintentaría de forma asíncrona (tabla outbox o un job).
-- **El stock se valida pero no se reserva**: se controla que la cantidad no supere
-  el stock en ese instante, pero no se descuenta. Dos órdenes simultáneas podrían
-  pasar la validación por la última unidad. La reserva real de inventario queda
-  fuera del alcance de esta prueba.
+- **El stock se descuenta al generar la orden**: tras validar el carrito, orders le
+  pide a productos que descuente todas las líneas (ver "Endpoints internos de stock"),
+  usando el id de la orden como referencia. Si en ese momento otra compra se llevó el
+  stock, productos lo rechaza y la respuesta es la misma (`insufficient_stock`, 400), sin
+  orden y con el carrito intacto. La llamada se hace **fuera de cualquier transacción**:
+  nunca se mantiene un lock de la base mientras se espera a otro servicio. Como es
+  idempotente por referencia, reintentarla (timeouts, reintentos de la sesión HTTP) es seguro.
+- **Si la orden no llega a crearse, el stock se devuelve**: si productos no responde
+  (`503`; pudo haber aplicado el descuento igual), si falla el insert de la orden o si
+  se pierde la carrera de la `Idempotency-Key`, orders llama al `DELETE` de esa
+  referencia. Es *best effort*: si la devolución también falla, el stock queda retenido
+  hasta que alguien lo reconcilie, igual que si el proceso muere entre el descuento y la
+  orden. En producción un job barrería los descuentos sin orden (saga u outbox). Un
+  reintento idempotente devuelve la orden original antes de descontar nada.
 - **Quién ve qué**: un usuario solo ve sus propias órdenes; si pide la orden de otro
   recibe `404` (no `403`), para no confirmar siquiera que existe. Los admins ven
   todas y pueden filtrar con `?user_id=` y `?status=`.
 - Misma arquitectura hexagonal liviana que el carrito: el caso de uso
-  (`orders/services.py`) depende del puerto `CartGateway` (`orders/cart_gateway.py`),
-  el adaptador HTTP está en `orders/cart_http.py` y los tests usan una versión en memoria.
+  (`orders/services.py`) depende de los puertos `CartGateway` (`orders/cart_gateway.py`)
+  y `StockGateway` (`orders/stock_gateway.py`), los adaptadores HTTP están en
+  `orders/cart_http.py` y `orders/stock_http.py`, y los tests usan versiones en memoria.
 
 ```text
 GET  /api/v1/orders/          órdenes propias (admin: todas, ?user_id=, ?status=)

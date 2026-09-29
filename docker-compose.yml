@@ -85,6 +85,7 @@ x-orders-env: &orders-env
   POSTGRES_HOST: orders-db
   POSTGRES_PORT: 5432
   CART_SERVICE_URL: http://cart:8000
+  PRODUCTS_SERVICE_URL: http://products:8000
 
 # Community MinIO fork (official images were pulled), pinned by digest because it is third-party.
 x-minio-image: &minio-image pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
@@ -461,7 +462,7 @@ services:
       <<: *orders-build
       target: runtime
     environment: *orders-env
-    # No depends_on cart: starts independently and answers 503 while the cart is down.
+    # No depends_on cart or products: starts independently and answers 503 while either is down.
     depends_on:
       orders-db:
         condition: service_healthy
