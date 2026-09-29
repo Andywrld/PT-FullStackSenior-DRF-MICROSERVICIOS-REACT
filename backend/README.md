@@ -166,6 +166,34 @@ El access token se envía en el header `Authorization: Bearer <access_token>`.
   `unaccent` de Postgres, que crea una migración (en Postgres 13+ es una extensión de
   confianza: basta con el permiso `CREATE` sobre la base, sin ser superusuario). La
   búsqueda de usuarios en auth, por nombre completo, funciona igual.
+- **La búsqueda de productos también tolera errores de ortografía**: `labadora` o
+  `lavdora` encuentran "Lavadora automática Electrolux 12 kg". Solo aplica al nombre
+  (el SKU, las categorías y los usuarios siguen siendo búsquedas literales). Usa la
+  extensión `pg_trgm` de Postgres, que crea otra migración (también es de confianza en
+  Postgres 13+), y compara trigramas con `strict_word_similarity` entre el término y el
+  nombre, ambos sin acentos.
+  - Un término coincide si aparece en el nombre o el SKU, como antes, **o** si su
+    similitud con el nombre llega a **0,45** (`FUZZY_THRESHOLD` en `products/filters.py`).
+    El valor sale de calibrar con ejemplos reales: `labadora` puntúa 0,50 y `lavdora`
+    0,55 contra "Lavadora", mientras que las palabras vecinas (`licuadora`, `secadora`)
+    quedan en 0,36 o menos. El valor por defecto de pg_trgm para `word_similarity`
+    (0,6) descartaría esos dos errores. Se usa la variante `strict` porque la normal
+    también premia una terminación compartida ("-adora") y deja a "Licuadora" en 0,44,
+    demasiado cerca.
+  - Los términos de menos de **4 caracteres** (`FUZZY_MIN_TERM_LENGTH`) solo buscan
+    literalmente: con tan pocos trigramas no se distingue un error de otra palabra.
+  - Se mantiene la semántica de DRF: todos los términos deben coincidir
+    (`labadora electrolux` exige ambos) y cada uno puede coincidir por nombre o SKU.
+  - **Orden por relevancia**: con `?search=` y sin `?ordering=`, primero van las
+    coincidencias literales, luego las aproximadas de mayor a menor similitud y, a
+    igualdad, el orden por defecto (`-created_at`), que hace estable la paginación. Un
+    `?ordering=` explícito siempre manda. Esto solo afecta a `/products/`
+    (`ProductSearchFilter` y `ProductOrderingFilter`, configurados en `ProductViewSet`).
+  - **Costo**: no hay índice. La búsqueda ya era un recorrido secuencial (`icontains`)
+    y `unaccent` no es `IMMUTABLE`, así que no se puede indexar la expresión tal cual;
+    con este catálogo es irrelevante. Si creciera, habría que envolver `unaccent` en una
+    función `IMMUTABLE`, crear un índice GIN con `gin_trgm_ops` y consultar con el
+    operador `%>>` en lugar de comparar `strict_word_similarity`.
 - `?ids=a,b,c` resuelve hasta 100 productos en **una sola llamada**: lo usa el
   carrito para no hacer una request por producto.
 

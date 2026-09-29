@@ -1,6 +1,7 @@
 from django.db import connection
 from django.db.models import Count, ProtectedError
 from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from marketplace_common.errors import DomainError
 from marketplace_common.permissions import IsAdminOrReadOnly
@@ -13,7 +14,7 @@ from rest_framework.views import APIView
 
 from . import services
 from .catalog_cache import CatalogCacheMixin
-from .filters import ProductFilter
+from .filters import ProductFilter, ProductOrderingFilter, ProductSearchFilter
 from .models import Category, Product
 from .serializers import (
     CategorySerializer,
@@ -32,6 +33,8 @@ class ProductViewSet(CatalogCacheMixin, viewsets.ModelViewSet):
     queryset = Product.objects.select_related("category").prefetch_related("images")
     serializer_class = ProductSerializer
     permission_classes = [IsAdminOrReadOnly]
+    # The global defaults, with search that forgives typos and orders by best match (see filters.py).
+    filter_backends = [DjangoFilterBackend, ProductSearchFilter, ProductOrderingFilter]
     filterset_class = ProductFilter
     # `__unaccent` makes the match accent-insensitive on both sides ("cafe" finds "Café", and vice versa).
     search_fields = ["name__unaccent", "sku"]
