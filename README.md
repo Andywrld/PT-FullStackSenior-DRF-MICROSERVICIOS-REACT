@@ -219,14 +219,17 @@ cd PT-FullStackSenior-DRF-MICROSERVICIOS-REACT
 Desde la raíz del repositorio:
 
 ```bash
-make up
-make seed
+docker compose up -d --build --wait
 ```
 
-- `make up` construye las imágenes (backend y frontend) y levanta todo. La primera vez
-  tarda unos minutos. Las migraciones, el bucket de imágenes y el super admin se crean solos.
-- `make seed` carga 4 categorías y 13 productos de ejemplo con sus fotos. Se puede
-  correr varias veces sin duplicar datos.
+(o `make up`, que ejecuta exactamente eso)
+
+- Construye las imágenes (backend y frontend), levanta todo y espera a que cada servicio
+  esté sano. La primera vez tarda unos minutos.
+- Las migraciones, el bucket de imágenes y el super admin se crean solos.
+- **En el primer arranque carga los datos de ejemplo** (4 categorías y 13 productos con
+  sus fotos). En los arranques siguientes no toca el catálogo, así no se pierden los
+  cambios hechos desde el panel de administración.
 
 Para comprobar que responde:
 
@@ -323,18 +326,18 @@ Todos se ejecutan desde la raíz del repositorio:
 
 | Comando | Qué hace |
 |---|---|
-| `make up` | Construye y levanta el stack |
+| `make up` | Construye, levanta el stack y espera a que esté sano |
 | `make down` | Detiene el stack (los datos se conservan) |
 | `make logs` | Muestra los logs de todos los servicios |
 | `make build` | Reconstruye las imágenes |
 | `make migrate` | Corre las migraciones de todos los servicios |
-| `make seed` | Carga los datos de ejemplo |
+| `make seed` | Vuelve a cargar los datos de ejemplo (restaura los productos de ejemplo si se editaron) |
 | `make test` | Corre los tests de los cuatro servicios |
 | `make psql-auth` (`-products`, `-cart`, `-orders`) | Abre una consola de la base de cada servicio |
 | `make clean` | Detiene el stack y **borra todos los datos** (volúmenes) |
 
 Sin `make`, cada comando equivale a su línea en el [`Makefile`](Makefile); por
-ejemplo, `make up` es `docker compose up -d`.
+ejemplo, `make up` es `docker compose up -d --build --wait`.
 
 ## Solución de problemas
 
@@ -342,9 +345,9 @@ ejemplo, `make up` es `docker compose up -d`.
 |---|---|
 | El puerto 8080 ya está en uso | Define `GATEWAY_PORT` en el `.env` de la raíz (y el mismo puerto en `VITE_GATEWAY_URL` si usas el modo desarrollo). |
 | El frontend muestra errores de conexión | Verifica que el backend esté arriba con `curl http://localhost:8080/health`. |
-| Los productos no tienen imágenes | Corre `make seed` después de `make up`. |
+| Faltan productos de ejemplo o sus imágenes | Corre `make seed` para volver a cargarlos. |
 | Cambié código y no se refleja | El código va dentro de la imagen: `docker compose up -d --build <servicio>` (por ejemplo `frontend`). |
-| Quiero empezar de cero | `make clean` y después `make up` y `make seed` (se borran todos los datos). |
+| Quiero empezar de cero | `make clean` y después `make up` (se borran todos los datos y se vuelve a cargar el catálogo de ejemplo). |
 
 ## Notas
 

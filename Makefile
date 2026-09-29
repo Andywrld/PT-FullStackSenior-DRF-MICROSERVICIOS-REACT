@@ -1,7 +1,7 @@
 .PHONY: up down build logs test test-auth test-products test-cart test-orders migrate seed psql-auth psql-products psql-cart psql-orders clean
 
 up:
-	docker compose up -d
+	docker compose up -d --build --wait
 
 down:
 	docker compose down

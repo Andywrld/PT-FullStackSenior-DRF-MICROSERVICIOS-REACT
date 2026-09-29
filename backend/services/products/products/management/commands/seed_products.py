@@ -143,7 +143,18 @@ class Command(BaseCommand):
         "seed_data/images. Idempotent: photos are attached only to products that have none."
     )
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--if-empty",
+            action="store_true",
+            help="Skip entirely when the catalog already has products (the automatic seed on `up`).",
+        )
+
     def handle(self, *args, **options):
+        # Re-seeding updates existing products: on every `up` it would undo edits made in the admin.
+        if options["if_empty"] and Product.objects.exists():
+            self.stdout.write("The catalog already has products: seed skipped.")
+            return
         missing = [
             name for data in SAMPLE_PRODUCTS for name in data["images"] if not (SEED_IMAGES_DIR / name).is_file()
         ]

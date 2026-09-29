@@ -287,6 +287,28 @@ services:
       - products-data
     restart: "no"
 
+  # Demo catalog on the first `up` only: --if-empty skips it once products exist,
+  # so edits made in the admin are never overwritten. `make seed` reloads it on demand.
+  products-seed:
+    <<: *django-service
+    build:
+      <<: *products-build
+      target: runtime
+    environment: *products-env
+    command: ["python", "manage.py", "seed_products", "--if-empty"]
+    depends_on:
+      products-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - products-data
+      - storage
+    restart: "no"
+
   products:
     <<: *django-service
     build:
@@ -297,6 +319,8 @@ services:
       products-db:
         condition: service_healthy
       products-migrate:
+        condition: service_completed_successfully
+      products-seed:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully

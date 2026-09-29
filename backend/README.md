@@ -23,9 +23,9 @@ edítalo (ver la nota sobre el nombre al final).
 Todos los comandos se ejecutan desde la **raíz del repositorio**, donde están `docker-compose.yml` y el `Makefile`.
 
 ```sh
-make up      # construye (si hace falta) y levanta todo el stack
+make up      # construye, levanta todo el stack y carga el catálogo de ejemplo la primera vez
 make test    # corre los tests de todos los servicios (auth, products, cart, orders)
-make seed    # carga 4 categorías y 13 productos con sus fotos (idempotente)
+make seed    # vuelve a cargar las 4 categorías y 13 productos de ejemplo
 make down    # detiene el stack
 make clean   # detiene el stack y borra los volúmenes (se pierden todos los datos)
 ```
@@ -316,10 +316,11 @@ POST /api/v1/orders/          crea una orden desde el carrito
 
 ## Notas
 
-- **Datos de demo**: `make seed` carga 4 categorías y 13 productos con las fotos de
-  `services/products/seed_data/images/`. Es un comando y no una migración a propósito:
-  las migraciones corren en todos los entornos, y los datos de demo solo se cargan
-  cuando se piden. Algunas fotos tienen marca de agua de bancos de imágenes: sirven
+- **Datos de demo**: el contenedor `products-seed` carga 4 categorías y 13 productos con
+  las fotos de `services/products/seed_data/images/` en el primer arranque (`--if-empty`:
+  si ya hay productos, no hace nada, para no pisar lo editado desde el admin). `make seed`
+  los vuelve a cargar a pedido. Es un comando y no una migración a propósito: las
+  migraciones corren en todos los entornos y los datos de demo no deberían. Algunas fotos tienen marca de agua de bancos de imágenes: sirven
   para probar en local, pero deben reemplazarse por imágenes con licencia libre antes
   de publicar el proyecto.
 
