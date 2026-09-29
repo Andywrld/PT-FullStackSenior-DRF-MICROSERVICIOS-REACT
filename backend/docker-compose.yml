@@ -1,0 +1,490 @@
+name: marketplace
+
+x-django-service: &django-service
+  environment: &django-env
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-dev-secret-key-change-me}
+    DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+    GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    JWT_JWKS_URL: http://auth:8000/.well-known/jwks.json
+    JWT_ISSUER: marketplace-auth
+    JWT_AUDIENCE: marketplace
+  networks:
+    - edge
+  restart: unless-stopped
+
+x-products-build: &products-build
+  context: ./services/products
+  additional_contexts:
+    common: ./libs/common
+
+x-cart-build: &cart-build
+  context: ./services/cart
+  additional_contexts:
+    common: ./libs/common
+
+x-orders-build: &orders-build
+  context: ./services/orders
+  additional_contexts:
+    common: ./libs/common
+
+x-auth-build: &auth-build
+  context: ./services/auth
+  additional_contexts:
+    common: ./libs/common
+
+x-auth-env: &auth-env
+  <<: *django-env
+  DJANGO_ALLOWED_HOSTS: ${AUTH_ALLOWED_HOSTS:-localhost,127.0.0.1,auth}
+  POSTGRES_DB: ${AUTH_POSTGRES_DB:-auth}
+  POSTGRES_USER: ${AUTH_POSTGRES_USER:-auth}
+  POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:-auth}
+  POSTGRES_HOST: auth-db
+  POSTGRES_PORT: 5432
+  JWT_PRIVATE_KEY_PATH: /keys/jwt_private.pem
+  JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES:-15}
+  JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-7}
+  # Bootstrap super admin (dev defaults: change them outside local development).
+  SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-superadmin@marketplace.local}
+  SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-SuperAdmin123!}
+
+x-products-env: &products-env
+  <<: *django-env
+  DJANGO_ALLOWED_HOSTS: ${PRODUCTS_ALLOWED_HOSTS:-localhost,127.0.0.1,products}
+  POSTGRES_DB: ${PRODUCTS_POSTGRES_DB:-products}
+  POSTGRES_USER: ${PRODUCTS_POSTGRES_USER:-products}
+  POSTGRES_PASSWORD: ${PRODUCTS_POSTGRES_PASSWORD:-products}
+  POSTGRES_HOST: products-db
+  POSTGRES_PORT: 5432
+  S3_ENDPOINT_URL: http://minio:9000
+  S3_BUCKET: ${S3_BUCKET:-product-images}
+  PRODUCTS_S3_ACCESS_KEY: ${PRODUCTS_S3_ACCESS_KEY:-products-service}
+  PRODUCTS_S3_SECRET_KEY: ${PRODUCTS_S3_SECRET_KEY:-products-service-secret-dev}
+  MEDIA_PUBLIC_DOMAIN: ${MEDIA_PUBLIC_DOMAIN:-localhost:8080/media/product-images}
+  MEDIA_URL_PROTOCOL: ${MEDIA_URL_PROTOCOL:-http:}
+  MAX_IMAGE_UPLOAD_MB: ${MAX_IMAGE_UPLOAD_MB:-5}
+  MAX_IMAGES_PER_PRODUCT: ${MAX_IMAGES_PER_PRODUCT:-8}
+  REDIS_URL: redis://redis:6379/0
+  CATALOG_CACHE_TTL_SECONDS: ${CATALOG_CACHE_TTL_SECONDS:-300}
+
+x-cart-env: &cart-env
+  <<: *django-env
+  DJANGO_ALLOWED_HOSTS: ${CART_ALLOWED_HOSTS:-localhost,127.0.0.1,cart}
+  POSTGRES_DB: ${CART_POSTGRES_DB:-cart}
+  POSTGRES_USER: ${CART_POSTGRES_USER:-cart}
+  POSTGRES_PASSWORD: ${CART_POSTGRES_PASSWORD:-cart}
+  POSTGRES_HOST: cart-db
+  POSTGRES_PORT: 5432
+  PRODUCTS_SERVICE_URL: http://products:8000
+
+x-orders-env: &orders-env
+  <<: *django-env
+  DJANGO_ALLOWED_HOSTS: ${ORDERS_ALLOWED_HOSTS:-localhost,127.0.0.1,orders}
+  POSTGRES_DB: ${ORDERS_POSTGRES_DB:-orders}
+  POSTGRES_USER: ${ORDERS_POSTGRES_USER:-orders}
+  POSTGRES_PASSWORD: ${ORDERS_POSTGRES_PASSWORD:-orders}
+  POSTGRES_HOST: orders-db
+  POSTGRES_PORT: 5432
+  CART_SERVICE_URL: http://cart:8000
+
+# Community MinIO fork (official images were pulled), pinned by digest because it is third-party.
+x-minio-image: &minio-image pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+
+services:
+  gateway:
+    image: nginx:1.30.5-alpine
+    # Directory, not file: editors that replace the file break single-file bind mounts.
+    volumes:
+      - ./gateway:/etc/nginx/gateway:ro
+    command: ["nginx", "-c", "/etc/nginx/gateway/nginx.conf", "-g", "daemon off;"]
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    networks:
+      - edge
+      - storage
+    depends_on:
+      - auth
+      - products
+      - cart
+      - orders
+    restart: unless-stopped
+
+  auth-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${AUTH_POSTGRES_DB:-auth}
+      POSTGRES_USER: ${AUTH_POSTGRES_USER:-auth}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:-auth}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - auth-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_POSTGRES_USER:-auth} -d ${AUTH_POSTGRES_DB:-auth}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  auth-migrate:
+    <<: *django-service
+    build:
+      <<: *auth-build
+      target: runtime
+    environment: *auth-env
+    command:
+      - sh
+      - -c
+      - python manage.py migrate --noinput && python manage.py ensure_signing_key && python manage.py ensure_superadmin
+    volumes:
+      - auth-keys:/keys
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - auth-data
+    restart: "no"
+
+  auth:
+    <<: *django-service
+    build:
+      <<: *auth-build
+      target: runtime
+    environment: *auth-env
+    # Read-only: the API signs with the key but can never replace it.
+    volumes:
+      - auth-keys:/keys:ro
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - auth-data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  auth-tests:
+    build:
+      <<: *auth-build
+      target: dev
+    environment:
+      <<: *auth-env
+      DJANGO_DEBUG: 1
+    command: ["pytest"]
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - auth-data
+    profiles: ["test"]
+    restart: "no"
+
+  products-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${PRODUCTS_POSTGRES_DB:-products}
+      POSTGRES_USER: ${PRODUCTS_POSTGRES_USER:-products}
+      POSTGRES_PASSWORD: ${PRODUCTS_POSTGRES_PASSWORD:-products}
+    volumes:
+      - products-db-data:/var/lib/postgresql/data
+    networks:
+      - products-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PRODUCTS_POSTGRES_USER:-products} -d ${PRODUCTS_POSTGRES_DB:-products}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Only products can reach it (products-data). No persistence: losing it costs a few DB reads.
+  redis:
+    image: redis:8.10.2-alpine
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
+    networks:
+      - products-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: *minio-image
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin-dev}
+    volumes:
+      - minio-data:/data
+    # S3 API never published: reads via the gateway, writes only from products. Console on localhost only.
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    networks:
+      - storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio-init:
+    image: *minio-image
+    entrypoint: ["sh", "/storage/init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin-dev}
+      S3_BUCKET: ${S3_BUCKET:-product-images}
+      PRODUCTS_S3_ACCESS_KEY: ${PRODUCTS_S3_ACCESS_KEY:-products-service}
+      PRODUCTS_S3_SECRET_KEY: ${PRODUCTS_S3_SECRET_KEY:-products-service-secret-dev}
+    volumes:
+      - ./storage:/storage:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - storage
+    restart: "no"
+
+  # Once per `up`, not per replica: `--scale products=N` never races over migrations.
+  products-migrate:
+    <<: *django-service
+    build:
+      <<: *products-build
+      target: runtime
+    environment: *products-env
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      products-db:
+        condition: service_healthy
+    networks:
+      - edge
+      - products-data
+    restart: "no"
+
+  products:
+    <<: *django-service
+    build:
+      <<: *products-build
+      target: runtime
+    environment: *products-env
+    depends_on:
+      products-db:
+        condition: service_healthy
+      products-migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - products-data
+      - storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    # No container_name or host port: reachable only via the gateway and free to --scale.
+
+  products-tests:
+    build:
+      <<: *products-build
+      target: dev
+    environment:
+      <<: *products-env
+      DJANGO_DEBUG: 1
+    command: ["pytest"]
+    depends_on:
+      products-db:
+        condition: service_healthy
+    networks:
+      - edge
+      - products-data
+    profiles: ["test"]
+    restart: "no"
+
+  cart-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${CART_POSTGRES_DB:-cart}
+      POSTGRES_USER: ${CART_POSTGRES_USER:-cart}
+      POSTGRES_PASSWORD: ${CART_POSTGRES_PASSWORD:-cart}
+    volumes:
+      - cart-db-data:/var/lib/postgresql/data
+    networks:
+      - cart-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CART_POSTGRES_USER:-cart} -d ${CART_POSTGRES_DB:-cart}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  cart-migrate:
+    <<: *django-service
+    build:
+      <<: *cart-build
+      target: runtime
+    environment: *cart-env
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      cart-db:
+        condition: service_healthy
+    networks:
+      - cart-data
+    restart: "no"
+
+  cart:
+    <<: *django-service
+    build:
+      <<: *cart-build
+      target: runtime
+    environment: *cart-env
+    # No depends_on products: starts independently and answers 503 while the catalog is down.
+    depends_on:
+      cart-db:
+        condition: service_healthy
+      cart-migrate:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - cart-data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  cart-tests:
+    build:
+      <<: *cart-build
+      target: dev
+    environment:
+      <<: *cart-env
+      DJANGO_DEBUG: 1
+    command: ["pytest"]
+    depends_on:
+      cart-db:
+        condition: service_healthy
+    networks:
+      - cart-data
+    profiles: ["test"]
+    restart: "no"
+
+  orders-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${ORDERS_POSTGRES_DB:-orders}
+      POSTGRES_USER: ${ORDERS_POSTGRES_USER:-orders}
+      POSTGRES_PASSWORD: ${ORDERS_POSTGRES_PASSWORD:-orders}
+    volumes:
+      - orders-db-data:/var/lib/postgresql/data
+    networks:
+      - orders-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ORDERS_POSTGRES_USER:-orders} -d ${ORDERS_POSTGRES_DB:-orders}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  orders-migrate:
+    <<: *django-service
+    build:
+      <<: *orders-build
+      target: runtime
+    environment: *orders-env
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      orders-db:
+        condition: service_healthy
+    networks:
+      - orders-data
+    restart: "no"
+
+  orders:
+    <<: *django-service
+    build:
+      <<: *orders-build
+      target: runtime
+    environment: *orders-env
+    # No depends_on cart: starts independently and answers 503 while the cart is down.
+    depends_on:
+      orders-db:
+        condition: service_healthy
+      orders-migrate:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - orders-data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  orders-tests:
+    build:
+      <<: *orders-build
+      target: dev
+    environment:
+      <<: *orders-env
+      DJANGO_DEBUG: 1
+    command: ["pytest"]
+    depends_on:
+      orders-db:
+        condition: service_healthy
+    networks:
+      - orders-data
+    profiles: ["test"]
+    restart: "no"
+
+networks:
+  edge:
+    driver: bridge
+  # internal: only services attached to it can reach the database.
+  products-data:
+    driver: bridge
+    internal: true
+  cart-data:
+    driver: bridge
+    internal: true
+  orders-data:
+    driver: bridge
+    internal: true
+  auth-data:
+    driver: bridge
+    internal: true
+  # Not internal (the console publishes a port); isolation comes from membership.
+  storage:
+    driver: bridge
+
+volumes:
+  products-db-data:
+  minio-data:
+  cart-db-data:
+  auth-db-data:
+  orders-db-data:
+  auth-keys:

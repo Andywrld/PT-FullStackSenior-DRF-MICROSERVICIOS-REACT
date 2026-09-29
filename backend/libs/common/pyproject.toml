@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marketplace-common"
+version = "0.1.0"
+description = "Shared chassis for the marketplace services: response envelope, errors, pagination, JWT auth and request ids."
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.2,<6",
+    "djangorestframework>=3.16",
+    "drf-spectacular>=0.28",
+    "PyJWT[crypto]>=2.10",
+]
+
+[tool.setuptools]
+packages = ["marketplace_common"]
