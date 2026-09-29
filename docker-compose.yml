@@ -13,24 +13,24 @@ x-django-service: &django-service
   restart: unless-stopped
 
 x-products-build: &products-build
-  context: ./services/products
+  context: ./backend/services/products
   additional_contexts:
-    common: ./libs/common
+    common: ./backend/libs/common
 
 x-cart-build: &cart-build
-  context: ./services/cart
+  context: ./backend/services/cart
   additional_contexts:
-    common: ./libs/common
+    common: ./backend/libs/common
 
 x-orders-build: &orders-build
-  context: ./services/orders
+  context: ./backend/services/orders
   additional_contexts:
-    common: ./libs/common
+    common: ./backend/libs/common
 
 x-auth-build: &auth-build
-  context: ./services/auth
+  context: ./backend/services/auth
   additional_contexts:
-    common: ./libs/common
+    common: ./backend/libs/common
 
 x-auth-env: &auth-env
   <<: *django-env
@@ -94,7 +94,7 @@ services:
     image: nginx:1.30.5-alpine
     # Directory, not file: editors that replace the file break single-file bind mounts.
     volumes:
-      - ./gateway:/etc/nginx/gateway:ro
+      - ./backend/gateway:/etc/nginx/gateway:ro
     command: ["nginx", "-c", "/etc/nginx/gateway/nginx.conf", "-g", "daemon off;"]
     ports:
       - "${GATEWAY_PORT:-8080}:80"
@@ -102,10 +102,19 @@ services:
       - edge
       - storage
     depends_on:
+      - frontend
       - auth
       - products
       - cart
       - orders
+    restart: unless-stopped
+
+  # The built React app, served by its own nginx; only reachable through the gateway.
+  frontend:
+    build:
+      context: ./frontend
+    networks:
+      - edge
     restart: unless-stopped
 
   auth-db:
@@ -254,7 +263,7 @@ services:
       PRODUCTS_S3_ACCESS_KEY: ${PRODUCTS_S3_ACCESS_KEY:-products-service}
       PRODUCTS_S3_SECRET_KEY: ${PRODUCTS_S3_SECRET_KEY:-products-service-secret-dev}
     volumes:
-      - ./storage:/storage:ro
+      - ./backend/storage:/storage:ro
     depends_on:
       minio:
         condition: service_healthy
