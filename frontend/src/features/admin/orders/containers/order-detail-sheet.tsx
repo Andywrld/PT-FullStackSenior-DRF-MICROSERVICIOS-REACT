@@ -37,9 +37,6 @@ export function OrderDetailSheet({ open, order, onOpenChange }: OrderDetailSheet
             </div>
             <div className="border-t bg-surface px-6 py-5">
               <OrderSummary order={order} />
-              <p className="mt-3 text-xs break-all text-muted-foreground">
-                ID: <span className="font-mono">{order.id}</span>
-              </p>
             </div>
           </>
         )}

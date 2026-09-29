@@ -15,9 +15,6 @@ export function OrderPlacedBanner({ orderId }: { orderId: string }) {
           Número de orden <span className="font-medium text-foreground tabular-nums">#{orderNumber(orderId)}</span>. La
           encuentras cuando quieras en Mis órdenes.
         </p>
-        <p className="text-xs break-all text-muted-foreground">
-          ID: <span className="font-mono">{orderId}</span>
-        </p>
       </div>
     </div>
   )
