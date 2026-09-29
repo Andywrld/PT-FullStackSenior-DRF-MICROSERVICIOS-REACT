@@ -160,7 +160,13 @@ El access token se envía en el header `Authorization: Bearer <access_token>`.
 - El SKU se normaliza (sin espacios, en mayúsculas), así que `abc-1` y `ABC-1` son
   el mismo producto.
 - El listado admite paginación, búsqueda (`?search=`), orden (`?ordering=price`) y
-  filtros (`?is_active=`, `?min_price=`, `?max_price=`, `?category=<id>`).
+  filtros (`?is_active=`, `?in_stock=`, `?min_price=`, `?max_price=`, `?category=<id>`).
+- **`?in_stock=true` oculta los productos agotados** (`stock = 0`); `?in_stock=false`
+  devuelve solo los agotados. Es opcional y **sin el parámetro el listado los incluye**:
+  la tienda lo envía para no ofrecerlos, pero el carrito consulta `?ids=` y necesita
+  ver un producto agotado para marcarlo como no disponible, y el panel de
+  administración los lista todos. El detalle (`/products/{id}/`) tampoco cambia, así
+  que los enlaces desde pedidos o el carrito siguen abriendo y muestran "Agotado".
 - **La búsqueda ignora acentos y mayúsculas** (por nombre y SKU; en categorías, por
   nombre): `cafe` encuentra "Café Molido" y `café` encuentra "Cafe". Usa la extensión
   `unaccent` de Postgres, que crea una migración (en Postgres 13+ es una extensión de

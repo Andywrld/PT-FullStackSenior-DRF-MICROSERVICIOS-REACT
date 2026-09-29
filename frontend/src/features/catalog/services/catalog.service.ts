@@ -18,6 +18,8 @@ export function fetchProducts({
     page,
     page_size: pageSize,
     is_active: true,
+    // Sold-out products stay reachable by link (detail page), but a list should not offer them.
+    in_stock: true,
     search: search || undefined,
     category: category || undefined,
     min_price: minPrice,

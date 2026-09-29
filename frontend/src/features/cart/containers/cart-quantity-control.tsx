@@ -23,7 +23,6 @@ export function CartQuantityControl({ productId, productName, stock }: CartQuant
       <AddToCartButton
         productId={productId}
         productName={productName}
-        outOfStock={stock === 0}
         label="Agregar"
         size="sm"
         variant="outline"

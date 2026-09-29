@@ -14,7 +14,6 @@ type AddToCartButtonProps = Omit<ComponentProps<typeof Button>, 'onClick' | 'chi
   productId: string
   productName: string
   quantity?: number
-  outOfStock?: boolean
   label?: string
 }
 
@@ -22,7 +21,6 @@ export function AddToCartButton({
   productId,
   productName,
   quantity = 1,
-  outOfStock = false,
   label = 'Agregar al carrito',
   disabled,
   ...buttonProps
@@ -52,9 +50,9 @@ export function AddToCartButton({
   }
 
   return (
-    <Button {...buttonProps} disabled={disabled || outOfStock || add.isPending} onClick={handleClick}>
+    <Button {...buttonProps} disabled={disabled || add.isPending} onClick={handleClick}>
       <ShoppingCartIcon />
-      {outOfStock ? 'Agotado' : add.isPending ? 'Agregando…' : label}
+      {add.isPending ? 'Agregando…' : label}
     </Button>
   )
 }

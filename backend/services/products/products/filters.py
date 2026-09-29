@@ -33,11 +33,16 @@ class ProductFilter(filters.FilterSet):
     min_price = filters.NumberFilter(field_name="price", lookup_expr="gte")
     max_price = filters.NumberFilter(field_name="price", lookup_expr="lte")
     category = filters.UUIDFilter(field_name="category_id")
+    # Opt-in: the storefront hides sold-out products, but cart, orders and the admin need them listed.
+    in_stock = filters.BooleanFilter(method="filter_in_stock")
     ids = filters.CharFilter(method="filter_ids")
 
     class Meta:
         model = Product
-        fields = ["is_active", "min_price", "max_price", "category", "ids"]
+        fields = ["is_active", "min_price", "max_price", "category", "in_stock", "ids"]
+
+    def filter_in_stock(self, queryset, name, value):
+        return queryset.filter(stock__gt=0) if value else queryset.filter(stock=0)
 
     def filter_ids(self, queryset, name, value):
         raw_ids = [item.strip() for item in value.split(",") if item.strip()]
