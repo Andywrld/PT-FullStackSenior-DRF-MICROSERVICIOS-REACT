@@ -15,12 +15,12 @@ El frontend llega en una fase posterior.
 - Docker y Docker Compose v2 (`docker compose`, no `docker-compose`).
 
 No hace falta un archivo `.env`: todas las variables tienen un valor por defecto
-en `docker-compose.yml`. Para personalizarlas, copia `env.example` a `.env` y
+en `docker-compose.yml` (en la raíz del repositorio). Para personalizarlas, copia `env.example` a `.env` en la raíz y
 edítalo (ver la nota sobre el nombre al final).
 
 ## Uso
 
-Todos los comandos se ejecutan desde esta carpeta `backend/`.
+Todos los comandos se ejecutan desde la **raíz del repositorio**, donde están `docker-compose.yml` y el `Makefile`.
 
 ```sh
 make up      # construye (si hace falta) y levanta todo el stack
