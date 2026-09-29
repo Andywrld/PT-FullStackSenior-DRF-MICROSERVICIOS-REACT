@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Una tienda curada donde el producto es el protagonista." />
+    <title>Marketplace</title>
+    <script>
+      // Apply the persisted theme before the first paint (no light flash in dark mode).
+      try {
+        const stored = JSON.parse(localStorage.getItem('marketplace-theme') ?? 'null')
+        if (stored?.state?.theme === 'dark') document.documentElement.classList.add('dark')
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
