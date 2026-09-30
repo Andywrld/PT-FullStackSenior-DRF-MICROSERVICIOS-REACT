@@ -106,9 +106,9 @@ def test_exact_matches_rank_above_fuzzy_ones(api_client, product_factory):
 
 def test_closer_misspellings_rank_above_farther_ones(api_client, product_factory):
     product_factory(name="Lavvadora Z")
-    product_factory(name="Labadora Y")  # newer, but a worse match
+    product_factory(name="Lavdora Y")  # newer, but a worse match
 
-    assert found(api_client, "lavadora") == ["Lavvadora Z", "Labadora Y"]
+    assert found(api_client, "lavadora") == ["Lavvadora Z", "Lavdora Y"]
 
 
 def test_equally_relevant_matches_keep_the_default_ordering(api_client, product_factory):
